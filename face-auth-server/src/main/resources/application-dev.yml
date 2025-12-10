@@ -1,0 +1,37 @@
+file:
+  upload-dir: ./uploads
+
+server:
+  port: 8080
+
+spring:
+  main:
+    banner-mode: off
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: jdbc:sqlite:../face-auth-temp/faceauth.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      minimum-idle: 100
+      maximum-pool-size: 500
+      idle-timeout: 30000
+      connection-timeout: 30000
+
+logging:
+  config: classpath:logback-dev.xml
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    banner: false
+    db-config:
+      logic-delete-value: 0
+      logic-not-delete-value: 1
+    enable-sql-runner: true
+  configuration:
+    log-impl: com.faceauth.core.config.MybatisLogging
+    cache-enabled: false
+    call-setters-on-nulls: false
