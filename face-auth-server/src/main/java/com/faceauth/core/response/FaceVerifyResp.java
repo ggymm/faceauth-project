@@ -9,14 +9,14 @@ import lombok.Data;
 public class FaceVerifyResp {
 
     /**
+     * 用户ID
+     */
+    private String userId;
+
+    /**
      * 是否匹配
      */
     private Boolean isMatch;
-
-    /**
-     * 相似度
-     */
-    private Double similarity;
 
     /**
      * 阈值
@@ -24,12 +24,7 @@ public class FaceVerifyResp {
     private Double threshold;
 
     /**
-     * 用户ID
+     * 相似度
      */
-    private String userId;
-
-    /**
-     * 消息
-     */
-    private String message;
+    private Double similarity;
 }

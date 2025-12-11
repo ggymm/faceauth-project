@@ -16,20 +16,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -37,14 +30,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FaceManageService {
 
-    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final CommonService commonService;
     private final FaceDataMapper faceDataMapper;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
-
-    @Value("${model.service-url}")
-    private String modelServiceUrl;
 
     public Result<?> getPage(FaceDataPageReq req) {
         final int page = req.getPage();
@@ -81,13 +72,12 @@ public class FaceManageService {
 
         String featureVector;
         try {
-            ModelExtractResp resp = extractFaceFeature(imagePath);
+            ModelExtractResp resp = commonService.extractFaceFeature(new File(imagePath));
             if (resp.getError() != null) {
                 return Result.error500(resp.getMessage());
             }
 
-            ObjectMapper mapper = new ObjectMapper();
-            featureVector = mapper.writeValueAsString(resp.getEmbedding());
+            featureVector = objectMapper.writeValueAsString(resp.getEmbedding());
         } catch (Exception e) {
             return Result.error500(e.getMessage());
         }
@@ -113,34 +103,5 @@ public class FaceManageService {
                 FilenameUtils.getExtension(faceImage.getOriginalFilename()));
         Files.copy(faceImage.getInputStream(), filepath);
         return filepath.toString();
-    }
-
-
-    /**
-     * 调用模型服务生成图像向量
-     *
-     * @param imagePath 图片文件路径
-     * @return 人脸特征提取结果
-     */
-    private ModelExtractResp extractFaceFeature(String imagePath) throws Exception {
-        // 读取图片文件
-        Path path = Paths.get(imagePath);
-        byte[] imageBytes = Files.readAllBytes(path);
-        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-
-        // 构建请求体
-        Map<String, String> requestBody = new HashMap<>();
-        requestBody.put("image", base64Image);
-
-        // 设置请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
-
-        // 调用模型服务
-        String url = modelServiceUrl + "/api/face/extract";
-        log.info("调用模型服务提取人脸特征: {}", url);
-
-        return restTemplate.postForObject(url, entity, ModelExtractResp.class);
     }
 }

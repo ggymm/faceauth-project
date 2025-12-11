@@ -1,8 +1,8 @@
 package com.faceauth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.faceauth.core.request.FaceVerifyReq;
 import com.faceauth.core.model.ModelExtractResp;
+import com.faceauth.core.request.FaceVerifyReq;
 import com.faceauth.core.response.FaceVerifyResp;
 import com.faceauth.core.response.Result;
 import com.faceauth.entity.FaceData;
@@ -11,26 +11,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.*;
+import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FaceClientService {
 
-    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final CommonService commonService;
     private final FaceDataMapper faceDataMapper;
-
-    @Value("${model.service-url}")
-    private String modelServiceUrl;
 
     /**
      * 人脸校验阈值（余弦相似度）
@@ -45,93 +38,58 @@ public class FaceClientService {
      * @return 校验结果
      */
     public Result<?> verify(FaceVerifyReq req) {
-        String userId = req.getUserId();
-        MultipartFile faceImage = req.getFaceImage();
+        final String userId = req.getUserId();
+        final MultipartFile faceImage = req.getFaceImage();
 
-        // 参数校验
         if (StringUtils.isEmpty(userId)) {
-            return Result.error500("用户ID不能为空");
+            return Result.error500("用户 ID 不能为空");
         }
         if (faceImage == null || faceImage.isEmpty()) {
-            return Result.error500("人脸图片不能为空");
+            return Result.error500("用户 人脸图片 不能为空");
         }
 
-        // 1. 查询数据库中该用户的人脸数据
         QueryWrapper<FaceData> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
+        wrapper.last("limit 1");
         FaceData faceData = faceDataMapper.selectOne(wrapper);
 
         if (faceData == null) {
-            return Result.error500("该用户未注册人脸数据");
+            return Result.error500("用户 " + userId + " 未注册人脸数据");
         }
 
+        List<Double> registeredEmbedding;
         try {
-            // 2. 直接从上传的图片提取人脸特征（不保存到磁盘）
-            ModelExtractResp extractResp = extractFaceFeature(faceImage);
-            if (extractResp.getError() != null) {
-                log.error("提取人脸特征失败: {}", extractResp.getMessage());
-                return Result.error500("提取人脸特征失败: " + extractResp.getMessage());
-            }
-
-            List<Double> currentEmbedding = extractResp.getEmbedding();
-            log.info("待校验人脸特征提取成功，维度: {}, 检测置信度: {}",
-                    currentEmbedding.size(), extractResp.getDetScore());
-
-            // 3. 解析数据库中存储的人脸特征向量
-            ObjectMapper mapper = new ObjectMapper();
-            List<Double> registeredEmbedding = mapper.readValue(
+            registeredEmbedding = objectMapper.readValue(
                     faceData.getFeatureVector(),
-                    mapper.getTypeFactory().constructCollectionType(List.class, Double.class)
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, Double.class)
             );
-
-            // 4. 计算余弦相似度
-            double similarity = calculateCosineSimilarity(currentEmbedding, registeredEmbedding);
-            log.info("人脸相似度: {}, 阈值: {}", similarity, SIMILARITY_THRESHOLD);
-
-            // 5. 判断是否匹配
-            boolean isMatch = similarity >= SIMILARITY_THRESHOLD;
-
-            // 6. 构建响应
-            FaceVerifyResp resp = new FaceVerifyResp();
-            resp.setUserId(userId);
-            resp.setIsMatch(isMatch);
-            resp.setSimilarity(similarity);
-            resp.setThreshold(SIMILARITY_THRESHOLD);
-            resp.setMessage(isMatch ? "人脸校验成功" : "人脸校验失败，相似度不足");
-
-            return Result.ok(resp);
-
         } catch (Exception e) {
-            log.error("人脸校验处理失败", e);
+            return Result.error500("读取用户 " + userId + " 注册人脸数据失败");
+        }
+
+        List<Double> currentEmbedding;
+        try {
+            ModelExtractResp resp = commonService.extractFaceFeature(faceImage);
+            if (resp.getError() != null) {
+                log.error("提取人脸特征失败: {}", resp.getMessage());
+                return Result.error500("提取人脸特征失败: " + resp.getMessage());
+            }
+            currentEmbedding = resp.getEmbedding();
+        } catch (Exception e) {
             return Result.error500("人脸校验失败: " + e.getMessage());
         }
-    }
 
-    /**
-     * 从MultipartFile直接提取人脸特征（不保存到磁盘）
-     *
-     * @param imageFile 人脸图片文件
-     * @return 人脸特征提取结果
-     */
-    private ModelExtractResp extractFaceFeature(MultipartFile imageFile) throws Exception {
-        // 直接读取上传文件的字节数组
-        byte[] imageBytes = imageFile.getBytes();
-        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+        // 计算相似度
+        double similarity = calculateCosineSimilarity(currentEmbedding, registeredEmbedding);
+        log.info("人脸相似度: {}, 阈值: {}", similarity, SIMILARITY_THRESHOLD);
 
-        // 构建请求体
-        Map<String, String> requestBody = new HashMap<>();
-        requestBody.put("image", base64Image);
-
-        // 设置请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
-
-        // 调用模型服务
-        String url = modelServiceUrl + "/api/face/extract";
-        log.info("调用模型服务提取人脸特征: {}", url);
-
-        return restTemplate.postForObject(url, entity, ModelExtractResp.class);
+        // 响应数据
+        FaceVerifyResp resp = new FaceVerifyResp();
+        resp.setUserId(userId);
+        resp.setIsMatch(similarity >= SIMILARITY_THRESHOLD);
+        resp.setThreshold(SIMILARITY_THRESHOLD);
+        resp.setSimilarity(similarity);
+        return Result.ok(resp);
     }
 
     /**

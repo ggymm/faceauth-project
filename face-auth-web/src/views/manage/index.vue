@@ -68,11 +68,12 @@ const saveData = async () => {
   formData.append('userId', dataModel.value.userId)
   formData.append('faceImage', dataModel.value.faceImage)
 
-  const { data, success, message } = await faceDataApi.createData(formData)
+  const { success, message } = await faceDataApi.createData(formData)
   dataShow.value = false
   dataLoading.value = false
   if (success) {
-    console.log(data)
+    tablePagination.page = 1 // 重置页号
+    await fetchTable()
   } else {
     window['$message'].error(message)
     console.error(message)
