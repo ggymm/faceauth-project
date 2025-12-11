@@ -1,8 +1,11 @@
 file:
-  upload-dir: ./uploads
+  upload-dir: ../face-auth-temp/images
+
+model:
+  service-url: http://localhost:30000
 
 server:
-  port: 8080
+  port: 20000
 
 spring:
   main:

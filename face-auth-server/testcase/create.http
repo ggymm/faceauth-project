@@ -1,0 +1,14 @@
+POST http://localhost:20000/api/v1/face/data/createData
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="userId"
+Content-Type: text/plain
+
+1
+--WebAppBoundary
+Content-Disposition: form-data; name="faceImage"; filename="1.png"
+Content-Type: application/json
+
+< ./1.png
+--WebAppBoundary--

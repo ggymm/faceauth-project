@@ -1,11 +1,9 @@
-package com.faceauth.model;
+package com.faceauth.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-
-import java.time.LocalDateTime;
 
 @Data
 @TableName("face_data")
@@ -18,7 +16,9 @@ public class FaceData {
 
     private String imageUrl;
 
-    private LocalDateTime createTime;
+    private String featureVector;
 
-    private LocalDateTime updateTime;
+    private Long createTime;
+
+    private Long updateTime;
 }

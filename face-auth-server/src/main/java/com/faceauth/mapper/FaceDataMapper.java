@@ -1,7 +1,7 @@
 package com.faceauth.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.faceauth.model.FaceData;
+import com.faceauth.entity.FaceData;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper

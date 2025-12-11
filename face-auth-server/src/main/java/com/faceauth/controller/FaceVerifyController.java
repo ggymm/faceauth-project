@@ -1,16 +1,22 @@
 package com.faceauth.controller;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import com.faceauth.core.request.FaceVerifyReq;
+import com.faceauth.core.response.Result;
+import com.faceauth.service.FaceVerifyService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/face/verify")
-@CrossOrigin(origins = "*")
+@RequestMapping("/api/v1/face/verify")
+@RequiredArgsConstructor
 public class FaceVerifyController {
 
-    @PostMapping
-    public ResponseEntity<String> verify() {
-        // TODO: 实现人脸验证功能
-        return ResponseEntity.ok("Face verify endpoint - to be implemented");
+    private final FaceVerifyService service;
+
+    @PostMapping("client")
+    public Result<?> verify(FaceVerifyReq req) {
+        return service.verify(req);
     }
 }

@@ -1,134 +1,146 @@
 package com.faceauth.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.faceauth.core.model.ModelExtractResp;
 import com.faceauth.core.request.FaceDataCreateReq;
-import com.faceauth.model.FaceData;
+import com.faceauth.core.request.FaceDataPageReq;
+import com.faceauth.core.request.FaceDataUpdateReq;
+import com.faceauth.core.response.PageResp;
+import com.faceauth.core.response.Result;
+import com.faceauth.entity.FaceData;
 import com.faceauth.mapper.FaceDataMapper;
-import jakarta.annotation.Resource;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
 import java.util.Base64;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class FaceDataService {
 
-    @Resource
-    private FaceDataMapper faceDataMapper;
+    private final RestTemplate restTemplate;
+    private final FaceDataMapper faceDataMapper;
 
     @Value("${file.upload-dir}")
     private String uploadDir;
 
+    @Value("${model.service-url}")
+    private String modelServiceUrl;
 
-    public List<FaceData> getAll() {
-        return faceDataMapper.selectList(null);
+    public Result<?> getPage(FaceDataPageReq req) {
+        final int page = req.getPage();
+        final int size = req.getSize();
+        final String userId = req.getUserId();
+
+        QueryWrapper<FaceData> wrapper = new QueryWrapper<>();
+        wrapper.eq(StringUtils.isNoneEmpty(userId), "user_id", userId);
+        Page<FaceData> dataPage = faceDataMapper.selectPage(new Page<>(page, size), wrapper);
+
+        PageResp<FaceData> resp = new PageResp<>();
+        resp.setTotal(dataPage.getTotal());
+        resp.setRecords(dataPage.getRecords());
+        return Result.ok(resp);
     }
 
-    public Page<FaceData> getPage(int pageNum, int pageSize) {
-        Page<FaceData> page = new Page<>(pageNum, pageSize);
-        return faceDataMapper.selectPage(page, null);
-    }
+    public Result<?> createData(FaceDataCreateReq req) {
+        File uploadDirectory = new File(uploadDir);
+        if (!uploadDirectory.exists()) {
+            boolean success = uploadDirectory.mkdirs();
+            if (!success) {
+                return Result.error500("创建文件保存路径失败");
+            }
+        }
+        final String userId = req.getUserId();
+        final MultipartFile faceImage = req.getFaceImage();
 
-    public FaceData getById(Long id) {
-        return faceDataMapper.selectById(id);
-    }
+        String imagePath;
+        try {
+            imagePath = saveFaceImage(userId, faceImage);
+        } catch (Exception e) {
+            return Result.error500(e.getMessage());
+        }
 
-    public FaceData create(FaceDataCreateReq request) {
-        String imageUrl = saveBase64Image(request.getFaceImageBase64());
+        String featureVector;
+        try {
+            ModelExtractResp resp = extractFaceFeature(imagePath);
+            if (resp.getError() != null) {
+                return Result.error500(resp.getMessage());
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            featureVector = mapper.writeValueAsString(resp.getEmbedding());
+        } catch (Exception e) {
+            return Result.error500(e.getMessage());
+        }
 
         FaceData faceData = new FaceData();
-        faceData.setUserId(request.getUserId());
-        faceData.setImageUrl(imageUrl);
-        faceData.setCreateTime(LocalDateTime.now());
-        faceData.setUpdateTime(LocalDateTime.now());
+        faceData.setUserId(userId);
+        faceData.setImageUrl(imagePath);
+        faceData.setFeatureVector(featureVector);
+        faceData.setCreateTime(System.currentTimeMillis());
+        faceData.setUpdateTime(System.currentTimeMillis());
 
         faceDataMapper.insert(faceData);
-        return faceData;
+        return Result.ok();
     }
 
-    public FaceData update(FaceDataCreateReq request) {
-        FaceData faceData = faceDataMapper.selectById(request.getId());
-        if (faceData == null) {
-            throw new RuntimeException("人脸数据不存在");
-        }
-
-        if (request.getFaceImageBase64() != null && !request.getFaceImageBase64().isEmpty()) {
-            deleteFile(faceData.getImageUrl());
-            String imageUrl = saveBase64Image(request.getFaceImageBase64());
-            faceData.setImageUrl(imageUrl);
-        }
-
-        if (request.getUserId() != null) {
-            faceData.setUserId(request.getUserId());
-        }
-
-        faceData.setUpdateTime(LocalDateTime.now());
-        faceDataMapper.updateById(faceData);
-        return faceData;
+    public Result<?> updateData(FaceDataUpdateReq req) {
+        return Result.ok();
     }
 
-    public void delete(Long id) {
-        FaceData faceData = faceDataMapper.selectById(id);
-        if (faceData != null) {
-            deleteFile(faceData.getImageUrl());
-            faceDataMapper.deleteById(id);
-        }
+    private String saveFaceImage(String userId, MultipartFile faceImage) throws Exception {
+        final Path filepath = Paths.get(uploadDir, userId
+                + "_" + UUID.randomUUID() + "." +
+                FilenameUtils.getExtension(faceImage.getOriginalFilename()));
+        Files.copy(faceImage.getInputStream(), filepath);
+        return filepath.toString();
     }
 
-    private String saveBase64Image(String base64String) {
-        try {
-            File uploadDirectory = new File(uploadDir);
-            if (!uploadDirectory.exists()) {
-                uploadDirectory.mkdirs();
-            }
 
-            String base64Data = base64String;
-            String extension = ".jpg";
+    /**
+     * 调用模型服务生成图像向量
+     *
+     * @param imagePath 图片文件路径
+     * @return 人脸特征提取结果
+     */
+    private ModelExtractResp extractFaceFeature(String imagePath) throws Exception {
+        // 读取图片文件
+        Path path = Paths.get(imagePath);
+        byte[] imageBytes = Files.readAllBytes(path);
+        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
 
-            if (base64String.contains(",")) {
-                String[] parts = base64String.split(",");
-                if (parts.length > 1) {
-                    base64Data = parts[1];
-                    String mimeType = parts[0];
-                    if (mimeType.contains("png")) {
-                        extension = ".png";
-                    } else if (mimeType.contains("jpeg") || mimeType.contains("jpg")) {
-                        extension = ".jpg";
-                    } else if (mimeType.contains("gif")) {
-                        extension = ".gif";
-                    }
-                }
-            }
+        // 构建请求体
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("image", base64Image);
 
-            byte[] imageBytes = Base64.getDecoder().decode(base64Data);
-            String filename = UUID.randomUUID().toString() + extension;
+        // 设置请求头
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
 
-            Path filePath = Paths.get(uploadDir, filename);
-            Files.write(filePath, imageBytes);
+        // 调用模型服务
+        String url = modelServiceUrl + "/api/face/extract";
+        log.info("调用模型服务提取人脸特征: {}", url);
 
-            return "/uploads/" + filename;
-        } catch (Exception e) {
-            throw new RuntimeException("文件保存失败", e);
-        }
-    }
-
-    private void deleteFile(String imageUrl) {
-        if (imageUrl != null && imageUrl.startsWith("/uploads/")) {
-            try {
-                String filename = imageUrl.substring("/uploads/".length());
-                Path filePath = Paths.get(uploadDir, filename);
-                Files.deleteIfExists(filePath);
-            } catch (IOException e) {
-                // Log error but don't throw exception
-            }
-        }
+        return restTemplate.postForObject(url, entity, ModelExtractResp.class);
     }
 }

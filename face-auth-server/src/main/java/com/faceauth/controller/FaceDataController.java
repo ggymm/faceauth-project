@@ -1,73 +1,35 @@
 package com.faceauth.controller;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.faceauth.core.request.FaceDataCreateReq;
-import com.faceauth.model.FaceData;
+import com.faceauth.core.request.FaceDataPageReq;
+import com.faceauth.core.request.FaceDataUpdateReq;
+import com.faceauth.core.response.Result;
 import com.faceauth.service.FaceDataService;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/face/data")
-@CrossOrigin(origins = "*")
+@RequestMapping("/api/v1/face/data")
+@RequiredArgsConstructor
 public class FaceDataController {
 
-    private final FaceDataService faceDataService;
+    private final FaceDataService service;
 
-    public FaceDataController(FaceDataService faceDataService) {
-        this.faceDataService = faceDataService;
+    @GetMapping("getPage")
+    public Result<?> getPage(FaceDataPageReq req) {
+        return service.getPage(req);
     }
 
-    @GetMapping
-    public ResponseEntity<List<FaceData>> getAll() {
-        return ResponseEntity.ok(faceDataService.getAll());
+    @PostMapping("/createData")
+    public Result<?> createData(FaceDataCreateReq req) {
+        return Result.ok(service.createData(req));
     }
 
-    @GetMapping("/page")
-    public ResponseEntity<Page<FaceData>> getPage(
-            @RequestParam(defaultValue = "1") int pageNum,
-            @RequestParam(defaultValue = "10") int pageSize) {
-        return ResponseEntity.ok(faceDataService.getPage(pageNum, pageSize));
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<FaceData> getById(@PathVariable Long id) {
-        FaceData faceData = faceDataService.getById(id);
-        if (faceData == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(faceData);
-    }
-
-    @PostMapping("/create")
-    public ResponseEntity<FaceData> create(@RequestBody FaceDataCreateReq request) {
-        try {
-            FaceData faceData = faceDataService.create(request);
-            return ResponseEntity.ok(faceData);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/update")
-    public ResponseEntity<FaceData> update(@RequestBody FaceDataCreateReq request) {
-        try {
-            FaceData faceData = faceDataService.update(request);
-            return ResponseEntity.ok(faceData);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/delete")
-    public ResponseEntity<Void> delete(@RequestBody FaceDataCreateReq request) {
-        try {
-            faceDataService.delete(request.getId());
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+    @PostMapping("/updateData")
+    public Result<?> updateData(FaceDataUpdateReq req) {
+        return Result.ok(service.updateData(req));
     }
 }
