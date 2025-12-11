@@ -1,77 +1,29 @@
 import request from './req'
 
+const baseUrl = '/v1/face/data/'
+
 export const faceDataApi = {
-  // 获取所有人脸数据
-  getAll() {
+  getPage(params) {
     return request({
-      url: '/face/data',
-      method: 'get'
-    })
-  },
-
-  // 分页获取人脸数据
-  getPage(pageNum, pageSize) {
-    return request({
-      url: '/face/data/page',
+      url: baseUrl + 'getPage',
       method: 'get',
-      params: { pageNum, pageSize }
+      params
     })
   },
 
-  // 根据ID获取人脸数据
-  getById(id) {
-    return request({
-      url: `/face/data/${id}`,
-      method: 'get'
+  createData(data) {
+    return request.post(baseUrl + 'createData', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     })
   },
 
-  // 创建人脸数据
-  create(data) {
-    return request({
-      url: '/face/data/create',
-      method: 'post',
-      data
-    })
-  },
-
-  // 更新人脸数据
-  update(data) {
-    return request({
-      url: '/face/data/update',
-      method: 'post',
-      data
-    })
-  },
-
-  // 删除人脸数据
-  delete(id) {
-    return request({
-      url: '/face/data/delete',
-      method: 'post',
-      data: { id }
-    })
-  }
-}
-
-// 人脸注册 API
-export const faceRegisterApi = {
-  register(data) {
-    return request({
-      url: '/face/register',
-      method: 'post',
-      data
-    })
-  }
-}
-
-// 人脸验证 API
-export const faceVerifyApi = {
-  verify(data) {
-    return request({
-      url: '/face/verify',
-      method: 'post',
-      data
+  updateData(data) {
+    return request.post(baseUrl + 'updateData', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     })
   }
 }
