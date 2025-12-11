@@ -131,6 +131,21 @@
             transform: none;
         }
 
+        #verifyBtn {
+            background: #FF9800;
+            color: white;
+        }
+
+        #verifyBtn:hover {
+            background: #F57C00;
+        }
+
+        #verifyBtn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .status {
             text-align: center;
             padding: 10px;
@@ -168,7 +183,8 @@
 
         <div class="controls">
             <button id="startBtn">启动摄像头</button>
-            <button id="captureBtn" disabled>拍照</button>
+            <button id="captureBtn" disabled>拍照保存</button>
+            <button id="verifyBtn" disabled>人脸校验</button>
             <button id="stopBtn" disabled>关闭摄像头</button>
         </div>
 
@@ -177,14 +193,16 @@
 </div>
 
 <script>
-    const { ipcRenderer } = require('electron');
-
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const startBtn = document.getElementById('startBtn');
     const captureBtn = document.getElementById('captureBtn');
+    const verifyBtn = document.getElementById('verifyBtn');
     const stopBtn = document.getElementById('stopBtn');
     const status = document.getElementById('status');
+
+    // 固定用户ID为1
+    const USER_ID = "1";
 
     let stream = null;
 
@@ -207,9 +225,10 @@
 
             startBtn.disabled = true;
             captureBtn.disabled = false;
+            verifyBtn.disabled = false;
             stopBtn.disabled = false;
 
-            updateStatus('摄像头已启动，可以拍照了', 'success');
+            updateStatus('摄像头已启动，可以拍照或进行人脸校验 (用户ID: 1)', 'success');
         } catch (err) {
             console.error('无法访问摄像头:', err);
             updateStatus('无法访问摄像头: ' + err.message, 'error');
@@ -232,6 +251,8 @@
         // 弹出保存对话框
         try {
             updateStatus('请选择保存位置...', 'info');
+
+            const { ipcRenderer } = require('electron');
             const result = await ipcRenderer.invoke('save-image', imageDataUrl);
 
             if (result.success) {
@@ -247,6 +268,59 @@
         }
     });
 
+    // 人脸校验
+    verifyBtn.addEventListener('click', async () => {
+        // 设置 canvas 尺寸为视频尺寸
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // 在 canvas 上绘制当前视频帧
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        try {
+            updateStatus('正在进行人脸校验...', 'info');
+
+            // 将 canvas 转换为 Blob
+            const blob = await new Promise(resolve => {
+                canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+
+            // 创建 FormData
+            const formData = new FormData();
+            formData.append('userId', USER_ID);
+            formData.append('faceImage', blob, 'face.jpg');
+
+            // 调用后端 API
+            const response = await fetch('http://localhost:20000/api/v1/face/verify/client', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const data = result.data;
+                if (data.isMatch) {
+                    updateStatus(
+                        `✓ 人脸校验成功！相似度: ${(data.similarity * 100).toFixed(2)}% (阈值: ${(data.threshold * 100).toFixed(2)}%)`,
+                        'success'
+                    );
+                } else {
+                    updateStatus(
+                        `✗ 人脸校验失败！相似度: ${(data.similarity * 100).toFixed(2)}% 低于阈值 ${(data.threshold * 100).toFixed(2)}%`,
+                        'error'
+                    );
+                }
+            } else {
+                updateStatus(`人脸校验失败: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            console.error('人脸校验失败:', error);
+            updateStatus('人脸校验失败: ' + error.message, 'error');
+        }
+    });
+
     // 关闭摄像头
     stopBtn.addEventListener('click', () => {
         if (stream) {
@@ -256,6 +330,7 @@
 
             startBtn.disabled = false;
             captureBtn.disabled = true;
+            verifyBtn.disabled = true;
             stopBtn.disabled = true;
 
             updateStatus('摄像头已关闭', 'info');
