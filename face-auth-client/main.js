@@ -3,7 +3,7 @@ const fs = require('fs');
 
 async function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 1200,
+    width: 1600,
     height: 900,
     webPreferences: {
       nodeIntegration: true,
@@ -12,6 +12,9 @@ async function createWindow() {
   });
 
   await mainWindow.loadFile('index.html');
+
+  // 窗口最大化（全屏显示）
+  // mainWindow.maximize();
 
   // 打开开发者工具（可选）
   mainWindow.webContents.openDevTools({

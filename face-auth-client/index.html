@@ -292,7 +292,7 @@
             formData.append('faceImage', blob, 'face.jpg');
 
             // 调用后端 API
-            const response = await fetch('http://localhost:20000/api/v1/face/verify/client', {
+            const response = await fetch('http://192.168.1.43:20000/api/v1/face/client/verify', {
                 method: 'POST',
                 body: formData
             });
