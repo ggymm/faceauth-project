@@ -24,7 +24,7 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class FaceVerifyService {
+public class FaceClientService {
 
     private final RestTemplate restTemplate;
     private final FaceDataMapper faceDataMapper;

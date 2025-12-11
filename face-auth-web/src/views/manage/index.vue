@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, reactive, ref, toRaw } from 'vue'
+import { NButton, NSpace } from 'naive-ui'
 
 import { faceDataApi } from '@/api/face-data.js'
 import { useWindowResize } from '@/hooks/index.js'
@@ -15,10 +15,41 @@ const columns = [
     key: 'updateTime',
     align: 'center',
     title: '更新时间',
+    width: 200
+  },
+  {
+    title: '操作',
+    key: 'actions',
     width: 200,
-    sorter: 'default',
-    render: (row) => {
-      return new Date(row['rts']).toLocaleString()
+    fixed: 'right',
+    align: 'center',
+    render(row) {
+      return h(
+        NSpace,
+        { justify: 'center' },
+        {
+          default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'primary',
+                onClick: async () => {}
+              },
+              { default: () => '编辑' }
+            ),
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'error',
+                onClick: async () => {}
+              },
+              { default: () => '删除' }
+            )
+          ]
+        }
+      )
     }
   }
 ]

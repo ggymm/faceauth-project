@@ -1,6 +1,6 @@
 import request from './req'
 
-const baseUrl = '/v1/face/data/'
+const baseUrl = '/v1/face/manage/'
 
 export const faceDataApi = {
   getPage(params) {
