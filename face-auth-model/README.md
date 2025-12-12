@@ -1,12 +1,5 @@
-### 开发
+### 人脸识别模型服务
 
-#### 运行
-
-```bash
-
-uv run python app.py
-
-```
 
 #### 下载模型
 
@@ -20,3 +13,22 @@ https://github.com/deepinsight/insightface/releases
 
 [下载地址](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip)
 
+
+#### 运行
+
+```bash
+
+uv run python app.py
+
+```
+
+
+#### 部署
+
+```bash
+
+# 导出依赖项
+uv lock
+uv export --frozen --no-hashes > requirements.txt
+
+```
