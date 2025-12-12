@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
 @Data
-public class FaceDataCreateReq {
+public class ClientRegisterReq {
     private String userId;
     private MultipartFile faceImage;
 }

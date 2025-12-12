@@ -3,6 +3,7 @@ package com.faceauth.service;
 import com.faceauth.core.model.ModelExtractResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FilenameUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
@@ -17,6 +18,10 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -25,13 +30,24 @@ public class CommonService {
 
     private final RestTemplate restTemplate;
 
+    @Value("${file.upload-dir}")
+    private String uploadDir;
+
     @Value("${model.service-url}")
     private String modelServiceUrl;
+
+    public String saveFaceImage(String userId, MultipartFile faceImage) throws Exception {
+        final Path filepath = Paths.get(uploadDir, userId
+                + "_" + UUID.randomUUID() + "." +
+                FilenameUtils.getExtension(faceImage.getOriginalFilename()));
+        Files.copy(faceImage.getInputStream(), filepath);
+        return filepath.toString();
+    }
 
     /**
      * 从 File 提取人脸特征
      */
-    public ModelExtractResp extractFaceFeature(File file) throws Exception {
+    public ModelExtractResp extractFaceFeature(File file) {
         FileSystemResource fileResource = new FileSystemResource(file);
         return extractFaceFeatureInternal(fileResource);
     }

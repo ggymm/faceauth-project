@@ -6,7 +6,7 @@ import lombok.Data;
  * 人脸校验响应
  */
 @Data
-public class FaceVerifyResp {
+public class ClientVerifyResp {
 
     /**
      * 用户ID

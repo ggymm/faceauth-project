@@ -4,8 +4,7 @@ import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
 @Data
-public class FaceDataUpdateReq {
-    private Long id;
+public class DataCreateReq {
     private String userId;
     private MultipartFile faceImage;
 }

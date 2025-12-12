@@ -4,7 +4,8 @@ import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
 @Data
-public class FaceVerifyReq {
+public class DataUpdateReq {
+    private Long id;
     private String userId;
     private MultipartFile faceImage;
 }

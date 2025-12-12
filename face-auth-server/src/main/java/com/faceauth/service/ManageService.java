@@ -1,11 +1,11 @@
 package com.faceauth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.faceauth.core.model.ModelExtractResp;
-import com.faceauth.core.request.FaceDataCreateReq;
-import com.faceauth.core.request.FaceDataPageReq;
-import com.faceauth.core.request.FaceDataUpdateReq;
+import com.faceauth.core.request.DataCreateReq;
+import com.faceauth.core.request.DataPageReq;
+import com.faceauth.core.request.DataUpdateReq;
 import com.faceauth.core.response.PageResp;
 import com.faceauth.core.response.Result;
 import com.faceauth.entity.FaceData;
@@ -13,22 +13,17 @@ import com.faceauth.mapper.FaceDataMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class FaceManageService {
+public class ManageService {
 
     private final ObjectMapper objectMapper;
     private final CommonService commonService;
@@ -37,13 +32,13 @@ public class FaceManageService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
-    public Result<?> getPage(FaceDataPageReq req) {
+    public Result<?> getPage(DataPageReq req) {
         final int page = req.getPage();
         final int size = req.getSize();
         final String userId = req.getUserId();
 
-        QueryWrapper<FaceData> wrapper = new QueryWrapper<>();
-        wrapper.eq(StringUtils.isNoneEmpty(userId), "user_id", userId);
+        LambdaQueryWrapper<FaceData> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(StringUtils.isNoneEmpty(userId), FaceData::getUserId, userId);
         Page<FaceData> dataPage = faceDataMapper.selectPage(new Page<>(page, size), wrapper);
 
         PageResp<FaceData> resp = new PageResp<>();
@@ -52,8 +47,8 @@ public class FaceManageService {
         return Result.ok(resp);
     }
 
-    public Result<?> createData(FaceDataCreateReq req) {
-        File uploadDirectory = new File(uploadDir);
+    public Result<?> createData(DataCreateReq req) {
+        final File uploadDirectory = new File(uploadDir);
         if (!uploadDirectory.exists()) {
             boolean success = uploadDirectory.mkdirs();
             if (!success) {
@@ -65,7 +60,7 @@ public class FaceManageService {
 
         String imagePath;
         try {
-            imagePath = saveFaceImage(userId, faceImage);
+            imagePath = commonService.saveFaceImage(userId, faceImage);
         } catch (Exception e) {
             return Result.error500(e.getMessage());
         }
@@ -86,22 +81,11 @@ public class FaceManageService {
         faceData.setUserId(userId);
         faceData.setImageUrl(imagePath);
         faceData.setFeatureVector(featureVector);
-        faceData.setCreateTime(System.currentTimeMillis());
-        faceData.setUpdateTime(System.currentTimeMillis());
-
         faceDataMapper.insert(faceData);
         return Result.ok();
     }
 
-    public Result<?> updateData(FaceDataUpdateReq req) {
-        return Result.ok();
-    }
-
-    private String saveFaceImage(String userId, MultipartFile faceImage) throws Exception {
-        final Path filepath = Paths.get(uploadDir, userId
-                + "_" + UUID.randomUUID() + "." +
-                FilenameUtils.getExtension(faceImage.getOriginalFilename()));
-        Files.copy(faceImage.getInputStream(), filepath);
-        return filepath.toString();
+    public Result<?> updateData(DataUpdateReq req) {
+        return Result.ok(req);
     }
 }

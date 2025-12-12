@@ -5,6 +5,6 @@ import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
-public class FaceDataPageReq extends PageReq{
+public class DataPageReq extends PageReq{
     private String userId;
 }
