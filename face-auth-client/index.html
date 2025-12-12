@@ -68,11 +68,13 @@
             display: flex;
             gap: 15px;
             flex-wrap: wrap;
-            justify-content: center;
+            width: 100%;
+            max-width: 640px;
         }
 
         button {
-            padding: 12px 30px;
+            flex: 1;
+            padding: 12px 20px;
             font-size: 16px;
             border: none;
             border-radius: 8px;
@@ -81,6 +83,7 @@
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 1px;
+            min-width: 0;
         }
 
         button:hover {
@@ -101,16 +104,16 @@
             background: #45a049;
         }
 
-        #captureBtn {
+        #registerBtn {
             background: #2196F3;
             color: white;
         }
 
-        #captureBtn:hover {
+        #registerBtn:hover {
             background: #0b7dda;
         }
 
-        #captureBtn:disabled {
+        #registerBtn:disabled {
             background: #ccc;
             cursor: not-allowed;
             transform: none;
@@ -168,6 +171,26 @@
             background: #ffebee;
             color: #c62828;
         }
+
+        .input-group {
+            width: 100%;
+            max-width: 640px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -179,11 +202,15 @@
             <video id="video" autoplay></video>
         </div>
 
+        <div class="input-group">
+            <input type="text" id="userIdInput" value="1" placeholder="请输入用户ID">
+        </div>
+
         <canvas id="canvas"></canvas>
 
         <div class="controls">
             <button id="startBtn">启动摄像头</button>
-            <button id="captureBtn" disabled>拍照保存</button>
+            <button id="registerBtn" disabled>注册人脸</button>
             <button id="verifyBtn" disabled>人脸校验</button>
             <button id="stopBtn" disabled>关闭摄像头</button>
         </div>
@@ -196,13 +223,11 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const startBtn = document.getElementById('startBtn');
-    const captureBtn = document.getElementById('captureBtn');
+    const registerBtn = document.getElementById('registerBtn');
     const verifyBtn = document.getElementById('verifyBtn');
     const stopBtn = document.getElementById('stopBtn');
     const status = document.getElementById('status');
-
-    // 固定用户ID为1
-    const USER_ID = "1";
+    const userIdInput = document.getElementById('userIdInput');
 
     let stream = null;
 
@@ -224,52 +249,28 @@
             video.srcObject = stream;
 
             startBtn.disabled = true;
-            captureBtn.disabled = false;
+            registerBtn.disabled = false;
             verifyBtn.disabled = false;
             stopBtn.disabled = false;
 
-            updateStatus('摄像头已启动，可以拍照或进行人脸校验 (用户ID: 1)', 'success');
+            updateStatus('摄像头已启动，可以注册人脸或进行人脸校验', 'success');
         } catch (err) {
             console.error('无法访问摄像头:', err);
             updateStatus('无法访问摄像头: ' + err.message, 'error');
         }
     });
 
-    // 拍照
-    captureBtn.addEventListener('click', async () => {
-        // 设置 canvas 尺寸为视频尺寸
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+    // 注册人脸
+    registerBtn.addEventListener('click', async () => {
+        // 获取用户输入的ID
+        const userId = userIdInput.value.trim();
 
-        // 在 canvas 上绘制当前视频帧
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // 将 canvas 转换为 base64 图片
-        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-
-        // 弹出保存对话框
-        try {
-            updateStatus('请选择保存位置...', 'info');
-
-            const { ipcRenderer } = require('electron');
-            const result = await ipcRenderer.invoke('save-image', imageDataUrl);
-
-            if (result.success) {
-                updateStatus(`照片保存成功: ${result.path}`, 'success');
-            } else if (result.canceled) {
-                updateStatus('已取消保存', 'info');
-            } else {
-                updateStatus(result.message, 'error');
-            }
-        } catch (error) {
-            console.error('保存照片失败:', error);
-            updateStatus('保存照片失败: ' + error.message, 'error');
+        // 验证用户ID
+        if (!userId) {
+            updateStatus('请输入用户ID', 'error');
+            return;
         }
-    });
 
-    // 人脸校验
-    verifyBtn.addEventListener('click', async () => {
         // 设置 canvas 尺寸为视频尺寸
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -279,7 +280,7 @@
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         try {
-            updateStatus('正在进行人脸校验...', 'info');
+            updateStatus(`正在注册人脸 (用户ID: ${userId})...`, 'info');
 
             // 将 canvas 转换为 Blob
             const blob = await new Promise(resolve => {
@@ -288,7 +289,58 @@
 
             // 创建 FormData
             const formData = new FormData();
-            formData.append('userId', USER_ID);
+            formData.append('userId', userId);
+            formData.append('faceImage', blob, 'face.jpg');
+
+            // 调用后端 API
+            const response = await fetch('http://192.168.1.43:20000/api/v1/face/client/register', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                updateStatus(`✓ 人脸注册成功！用户ID: ${userId}`, 'success');
+            } else {
+                updateStatus(`人脸注册失败: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            console.error('人脸注册失败:', error);
+            updateStatus('人脸注册失败: ' + error.message, 'error');
+        }
+    });
+
+    // 人脸校验
+    verifyBtn.addEventListener('click', async () => {
+        // 获取用户输入的ID
+        const userId = userIdInput.value.trim();
+
+        // 验证用户ID
+        if (!userId) {
+            updateStatus('请输入用户ID', 'error');
+            return;
+        }
+
+        // 设置 canvas 尺寸为视频尺寸
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // 在 canvas 上绘制当前视频帧
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        try {
+            updateStatus(`正在进行人脸校验 (用户ID: ${userId})...`, 'info');
+
+            // 将 canvas 转换为 Blob
+            const blob = await new Promise(resolve => {
+                canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+
+            // 创建 FormData
+            const formData = new FormData();
+            formData.append('userId', userId);
             formData.append('faceImage', blob, 'face.jpg');
 
             // 调用后端 API
@@ -301,14 +353,14 @@
 
             if (result.success) {
                 const data = result.data;
-                if (data.isMatch) {
+                if (data["isMatch"]) {
                     updateStatus(
-                        `✓ 人脸校验成功！相似度: ${(data.similarity * 100).toFixed(2)}% (阈值: ${(data.threshold * 100).toFixed(2)}%)`,
+                        `✓ 人脸校验成功！相似度: ${(data["similarity"] * 100).toFixed(2)}% (阈值: ${(data["threshold"] * 100).toFixed(2)}%)`,
                         'success'
                     );
                 } else {
                     updateStatus(
-                        `✗ 人脸校验失败！相似度: ${(data.similarity * 100).toFixed(2)}% 低于阈值 ${(data.threshold * 100).toFixed(2)}%`,
+                        `✗ 人脸校验失败！相似度: ${(data["similarity"] * 100).toFixed(2)}% 低于阈值 ${(data["threshold"] * 100).toFixed(2)}%`,
                         'error'
                     );
                 }
@@ -329,7 +381,7 @@
             stream = null;
 
             startBtn.disabled = false;
-            captureBtn.disabled = true;
+            registerBtn.disabled = true;
             verifyBtn.disabled = true;
             stopBtn.disabled = true;
 
