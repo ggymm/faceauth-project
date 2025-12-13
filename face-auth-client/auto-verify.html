@@ -177,10 +177,6 @@
             line-height: 1.8;
         }
 
-        .tips.hidden {
-            display: none;
-        }
-
         .quality-bars {
             position: absolute;
             top: 20px;
@@ -290,34 +286,6 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-
-        .tips {
-            background: #f9fafb;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-            margin-top: 20px;
-        }
-
-        .tips-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
-        }
-
-        .tips-list {
-            list-style: none;
-            font-size: 13px;
-            color: #666;
-            line-height: 1.8;
-        }
-
-        .tips-list li:before {
-            content: "• ";
-            color: #667eea;
-            font-weight: bold;
-            margin-right: 5px;
-        }
     </style>
 </head>
 <body>
@@ -380,16 +348,6 @@
         <div class="button-group">
             <button id="startBtn" class="btn-primary">开始自动认证</button>
             <button id="cancelBtn" class="btn-secondary" disabled>取消</button>
-        </div>
-
-        <div class="tips">
-            <div class="tips-title">使用提示</div>
-            <ul class="tips-list">
-                <li>确保光线充足，正对摄像头</li>
-                <li>将人脸置于圆形引导框内</li>
-                <li>系统检测到人脸后，请轻微摇头或张嘴</li>
-                <li>活体检测通过后会自动完成认证</li>
-            </ul>
         </div>
     </div>
 </div>
@@ -877,7 +835,7 @@
 
             const result = await response.json();
 
-            // 隐藏tips和质量指示器
+            // 隐藏质量指示器
             statusIndicator.style.display = 'none';
             qualityBars.style.display = 'none';
             faceGuide.style.display = 'none';
@@ -968,7 +926,7 @@
 
         // 隐藏结果overlay
         resultOverlay.className = 'result-overlay';
-        // 显示tips
+        // 显示人脸引导框
         faceGuide.style.display = 'block';
 
         // 重置canvas和video显示状态
@@ -1004,7 +962,7 @@
         cancelBtn.disabled = true;
         userIdInput.disabled = false;
         isProcessing = false;
-        // 恢复tips显示
+        // 显示人脸引导框
         faceGuide.style.display = 'block';
         // 重置canvas和video显示状态
         canvas.classList.remove('show');
