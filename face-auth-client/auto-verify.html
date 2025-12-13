@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自动人脸认证</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .video-section {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+        }
+
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .face-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            height: 350px;
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            transition: border-color 0.3s;
+        }
+
+        .face-guide.good {
+            border-color: #4ade80;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+        }
+
+        .face-guide.bad {
+            border-color: #f87171;
+        }
+
+        .status-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .quality-bars {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 200px;
+        }
+
+        .quality-item {
+            margin-bottom: 10px;
+        }
+
+        .quality-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .quality-label {
+            color: white;
+            font-size: 12px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .quality-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .quality-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f87171, #fbbf24, #4ade80);
+            transition: width 0.3s;
+        }
+
+        .control-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        input[type="text"] {
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #666;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e5e7eb;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .result-section {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result-section.success {
+            background: #ecfdf5;
+            border: 2px solid #4ade80;
+            display: block;
+        }
+
+        .result-section.error {
+            background: #fef2f2;
+            border: 2px solid #f87171;
+            display: block;
+        }
+
+        .result-section.info {
+            background: #eff6ff;
+            border: 2px solid #60a5fa;
+            display: block;
+        }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .result-section.success .result-title {
+            color: #16a34a;
+        }
+
+        .result-section.error .result-title {
+            color: #dc2626;
+        }
+
+        .result-section.info .result-title {
+            color: #2563eb;
+        }
+
+        .result-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #666;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .tips {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-top: 20px;
+        }
+
+        .tips-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .tips-list {
+            list-style: none;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .tips-list li:before {
+            content: "• ";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>智能人脸认证</h1>
+    <p class="subtitle">AI驱动的自动人脸检测和活体识别</p>
+
+    <div class="video-section">
+        <div class="video-container">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="overlay">
+                <div id="faceGuide" class="face-guide"></div>
+                <div id="statusIndicator" class="status-indicator" style="display: none;">
+                    <div id="statusText">准备中...</div>
+                </div>
+                <div id="qualityBars" class="quality-bars" style="display: none;">
+                    <div class="quality-item">
+                        <div class="quality-label">
+                            <span>人脸大小</span>
+                            <span id="faceSizeValue">0%</span>
+                        </div>
+                        <div class="quality-bar">
+                            <div id="faceSizeFill" class="quality-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="quality-item">
+                        <div class="quality-label">
+                            <span>正脸角度</span>
+                            <span id="faceAngleValue">0%</span>
+                        </div>
+                        <div class="quality-bar">
+                            <div id="faceAngleFill" class="quality-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="quality-item">
+                        <div class="quality-label">
+                            <span>检测置信度</span>
+                            <span id="confidenceValue">0%</span>
+                        </div>
+                        <div class="quality-bar">
+                            <div id="confidenceFill" class="quality-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-section">
+        <div class="input-group">
+            <label for="userId">用户ID</label>
+            <input type="text" id="userId" placeholder="请输入要认证的用户ID">
+        </div>
+
+        <div class="button-group">
+            <button id="startBtn" class="btn-primary">开始自动认证</button>
+            <button id="cancelBtn" class="btn-secondary" disabled>取消</button>
+        </div>
+
+        <div id="resultSection" class="result-section">
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-content" id="resultContent"></div>
+        </div>
+
+        <div class="tips">
+            <div class="tips-title">使用提示</div>
+            <ul class="tips-list">
+                <li>确保光线充足，正对摄像头</li>
+                <li>将人脸置于椭圆引导框内</li>
+                <li>系统检测到活体后会自动完成认证</li>
+                <li>认证过程中请保持自然表情</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- 引入 face-api.js (本地) -->
+<script src="./face-api.js"></script>
+
+<script>
+    // DOM 元素
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const startBtn = document.getElementById('startBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const userIdInput = document.getElementById('userId');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const qualityBars = document.getElementById('qualityBars');
+    const faceGuide = document.getElementById('faceGuide');
+    const resultSection = document.getElementById('resultSection');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultContent = document.getElementById('resultContent');
+
+    // 全局变量
+    let stream = null;
+    let detectionInterval = null;
+    let isProcessing = false;
+    let consecutiveGoodFrames = 0;
+    let blinkCount = 0;
+    let lastEyeState = null;
+    let modelsLoaded = false;
+
+    // 配置参数
+    const CONFIG = {
+        BACKEND_URL: 'http://192.168.1.43:20000',
+        MODEL_PATH: './models',  // 从本地加载模型
+        QUALITY_THRESHOLD: 85,
+        CONSECUTIVE_FRAMES: 3,
+        BLINK_REQUIRED: 1,
+        FACE_SIZE_MIN: 0.25,
+        FACE_SIZE_IDEAL: 0.35,
+        ANGLE_LIMIT: 20,
+        CONFIDENCE_MIN: 0.7,
+        DETECTION_INTERVAL: 100
+    };
+
+    // 加载 face-api.js 模型
+    async function loadModels() {
+        try {
+            updateStatus('正在加载AI模型...', 'info');
+
+            await faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.MODEL_PATH);
+            await faceapi.nets.faceLandmark68TinyNet.loadFromUri(CONFIG.MODEL_PATH);
+
+            modelsLoaded = true;
+            updateStatus('模型加载完成，准备就绪', 'success');
+            startBtn.disabled = false;
+
+            console.log('Face-api.js models loaded successfully');
+        } catch (error) {
+            console.error('Failed to load models:', error);
+            updateStatus('模型加载失败: ' + error.message, 'error');
+        }
+    }
+
+    // 启动摄像头
+    async function startCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user'
+                }
+            });
+
+            video.srcObject = stream;
+            return true;
+        } catch (error) {
+            console.error('Failed to start camera:', error);
+            updateStatus('无法访问摄像头: ' + error.message, 'error');
+            return false;
+        }
+    }
+
+    // 停止摄像头
+    function stopCamera() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            stream = null;
+        }
+
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+            detectionInterval = null;
+        }
+    }
+
+    // 开始人脸检测
+    async function startDetection() {
+        consecutiveGoodFrames = 0;
+        blinkCount = 0;
+        lastEyeState = null;
+
+        detectionInterval = setInterval(async () => {
+            if (isProcessing) return;
+
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks(true);
+
+                if (detection) {
+                    processDetection(detection);
+                } else {
+                    resetQuality();
+                    updateStatus('未检测到人脸，请将脸部置于框内', 'warning');
+                    faceGuide.className = 'face-guide bad';
+                    consecutiveGoodFrames = 0;
+                }
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+        }, CONFIG.DETECTION_INTERVAL);
+    }
+
+    // 处理检测结果
+    function processDetection(detection) {
+        const quality = calculateQuality(detection);
+        updateQualityUI(quality);
+
+        if (quality.overall >= CONFIG.QUALITY_THRESHOLD) {
+            consecutiveGoodFrames++;
+            faceGuide.className = 'face-guide good';
+
+            // 检测眨眼
+            const currentEyeState = detectBlink(detection.landmarks);
+            if (lastEyeState === 'open' && currentEyeState === 'closed') {
+                blinkCount++;
+                console.log('Blink detected, count:', blinkCount);
+            }
+            lastEyeState = currentEyeState;
+
+            // 判断是否可以自动拍摄
+            if (consecutiveGoodFrames >= CONFIG.CONSECUTIVE_FRAMES &&
+                blinkCount >= CONFIG.BLINK_REQUIRED) {
+                updateStatus(`质量优秀！准备认证... (已检测到${blinkCount}次眨眼)`, 'success');
+
+                // 延迟拍摄以确保稳定
+                setTimeout(() => {
+                    captureAndVerify();
+                }, 500);
+            } else {
+                const blinkStatus = blinkCount >= CONFIG.BLINK_REQUIRED ? '✓' :
+                    `请眨眼 (${blinkCount}/${CONFIG.BLINK_REQUIRED})`;
+                updateStatus(`质量良好 | ${blinkStatus} | 稳定中... (${consecutiveGoodFrames}/${CONFIG.CONSECUTIVE_FRAMES})`, 'success');
+            }
+        } else {
+            consecutiveGoodFrames = 0;
+            faceGuide.className = 'face-guide bad';
+            updateStatus(quality.feedback, 'warning');
+        }
+    }
+
+    // 计算质量分数
+    function calculateQuality(detection) {
+        const box = detection.detection.box;
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+
+        // 1. 人脸大小评分 (0-100)
+        const faceArea = box.width * box.height;
+        const videoArea = videoWidth * videoHeight;
+        const faceSizeRatio = faceArea / videoArea;
+        const faceSizeScore = Math.min((faceSizeRatio / CONFIG.FACE_SIZE_IDEAL) * 100, 100);
+
+        // 2. 正脸角度评分 (0-100) - 基于关键点估算
+        const landmarks = detection.landmarks;
+        const nose = landmarks.getNose();
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+
+        const eyeCenter = {
+            x: (leftEye[0].x + rightEye[0].x) / 2,
+            y: (leftEye[0].y + rightEye[0].y) / 2
+        };
+
+        const noseCenter = {
+            x: nose[3].x,
+            y: nose[3].y
+        };
+
+        const horizontalOffset = Math.abs(noseCenter.x - eyeCenter.x);
+        const eyeDistance = Math.sqrt(
+            Math.pow(rightEye[0].x - leftEye[0].x, 2) +
+            Math.pow(rightEye[0].y - leftEye[0].y, 2)
+        );
+
+        const angleRatio = horizontalOffset / eyeDistance;
+        const angleScore = Math.max(0, 100 - (angleRatio * 500));
+
+        // 3. 检测置信度评分 (0-100)
+        const confidence = detection.detection.score;
+        const confidenceScore = confidence * 100;
+
+        // 综合评分
+        const overallScore = (faceSizeScore * 0.4 + angleScore * 0.3 + confidenceScore * 0.3);
+
+        // 生成反馈
+        let feedback = '';
+        if (faceSizeRatio < CONFIG.FACE_SIZE_MIN) {
+            feedback = '请靠近摄像头';
+        } else if (faceSizeRatio > CONFIG.FACE_SIZE_IDEAL * 1.5) {
+            feedback = '请稍微远离摄像头';
+        } else if (angleScore < 70) {
+            feedback = '请正对摄像头';
+        } else if (confidenceScore < 70) {
+            feedback = '光线不足或画面模糊';
+        } else {
+            feedback = '姿势良好，保持稳定';
+        }
+
+        return {
+            faceSize: faceSizeScore,
+            angle: angleScore,
+            confidence: confidenceScore,
+            overall: overallScore,
+            feedback: feedback
+        };
+    }
+
+    // 检测眨眼
+    function detectBlink(landmarks) {
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+
+        // 计算眼睛纵横比 (Eye Aspect Ratio)
+        const leftEAR = calculateEAR(leftEye);
+        const rightEAR = calculateEAR(rightEye);
+        const avgEAR = (leftEAR + rightEAR) / 2;
+
+        // EAR 阈值：小于0.2认为是闭眼
+        return avgEAR < 0.2 ? 'closed' : 'open';
+    }
+
+    // 计算眼睛纵横比
+    function calculateEAR(eyePoints) {
+        // 计算垂直距离
+        const vertical1 = Math.sqrt(
+            Math.pow(eyePoints[1].x - eyePoints[5].x, 2) +
+            Math.pow(eyePoints[1].y - eyePoints[5].y, 2)
+        );
+        const vertical2 = Math.sqrt(
+            Math.pow(eyePoints[2].x - eyePoints[4].x, 2) +
+            Math.pow(eyePoints[2].y - eyePoints[4].y, 2)
+        );
+
+        // 计算水平距离
+        const horizontal = Math.sqrt(
+            Math.pow(eyePoints[0].x - eyePoints[3].x, 2) +
+            Math.pow(eyePoints[0].y - eyePoints[3].y, 2)
+        );
+
+        // EAR = (vertical1 + vertical2) / (2 * horizontal)
+        return (vertical1 + vertical2) / (2 * horizontal);
+    }
+
+    // 更新质量UI
+    function updateQualityUI(quality) {
+        document.getElementById('faceSizeValue').textContent = Math.round(quality.faceSize) + '%';
+        document.getElementById('faceSizeFill').style.width = quality.faceSize + '%';
+
+        document.getElementById('faceAngleValue').textContent = Math.round(quality.angle) + '%';
+        document.getElementById('faceAngleFill').style.width = quality.angle + '%';
+
+        document.getElementById('confidenceValue').textContent = Math.round(quality.confidence) + '%';
+        document.getElementById('confidenceFill').style.width = quality.confidence + '%';
+    }
+
+    // 重置质量显示
+    function resetQuality() {
+        updateQualityUI({
+            faceSize: 0,
+            angle: 0,
+            confidence: 0
+        });
+    }
+
+    // 捕获并验证
+    async function captureAndVerify() {
+        if (isProcessing) return;
+        isProcessing = true;
+
+        // 停止检测
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+            detectionInterval = null;
+        }
+
+        updateStatus('正在拍摄...', 'info');
+
+        // 捕获图片
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        try {
+            const userId = userIdInput.value.trim();
+
+            updateStatus('正在上传并验证...', 'info');
+
+            // 转换为Blob
+            const blob = await new Promise(resolve => {
+                canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            });
+
+            // 构建FormData
+            const formData = new FormData();
+            formData.append('userId', userId);
+            formData.append('faceImage', blob, 'face.jpg');
+
+            // 发送到后端
+            const response = await fetch(`${CONFIG.BACKEND_URL}/api/v1/face/client/verify`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            // 停止摄像头
+            stopCamera();
+
+            // 显示结果
+            if (result.success) {
+                const data = result.data;
+                if (data.isMatch) {
+                    showResult(
+                        'success',
+                        '认证成功！',
+                        `用户 ${userId} 认证通过<br>` +
+                        `相似度: ${(data.similarity * 100).toFixed(2)}%<br>` +
+                        `阈值: ${(data.threshold * 100).toFixed(2)}%<br>` +
+                        `活体检测: 通过 (检测到${blinkCount}次眨眼)`
+                    );
+                } else {
+                    showResult(
+                        'error',
+                        '认证失败',
+                        `相似度 ${(data.similarity * 100).toFixed(2)}% 低于阈值 ${(data.threshold * 100).toFixed(2)}%<br>` +
+                        `请确认用户ID是否正确`
+                    );
+                }
+            } else {
+                showResult('error', '认证失败', result.message);
+            }
+
+        } catch (error) {
+            console.error('Verification failed:', error);
+            stopCamera();
+            showResult('error', '认证失败', error.message);
+        } finally {
+            isProcessing = false;
+            statusIndicator.style.display = 'none';
+            qualityBars.style.display = 'none';
+            startBtn.disabled = false;
+            cancelBtn.disabled = true;
+        }
+    }
+
+    // 更新状态
+    function updateStatus(message, type) {
+        statusText.innerHTML = message;
+        statusIndicator.style.display = 'block';
+
+        if (type === 'success') {
+            statusIndicator.style.background = 'rgba(74, 222, 128, 0.9)';
+        } else if (type === 'error' || type === 'warning') {
+            statusIndicator.style.background = 'rgba(248, 113, 113, 0.9)';
+        } else {
+            statusIndicator.style.background = 'rgba(0, 0, 0, 0.7)';
+        }
+    }
+
+    // 显示结果
+    function showResult(type, title, content) {
+        resultSection.className = `result-section ${type}`;
+        resultTitle.textContent = title;
+        resultContent.innerHTML = content;
+    }
+
+    // 开始按钮点击
+    startBtn.addEventListener('click', async () => {
+        const userId = userIdInput.value.trim();
+
+        if (!userId) {
+            showResult('error', '输入错误', '请输入用户ID');
+            return;
+        }
+
+        if (!modelsLoaded) {
+            showResult('error', '模型未加载', '请等待AI模型加载完成');
+            return;
+        }
+
+        // 隐藏结果
+        resultSection.className = 'result-section';
+
+        // 启动摄像头
+        const cameraStarted = await startCamera();
+        if (!cameraStarted) return;
+
+        // 更新按钮状态
+        startBtn.disabled = true;
+        cancelBtn.disabled = false;
+        userIdInput.disabled = true;
+
+        // 显示UI元素
+        qualityBars.style.display = 'block';
+        updateStatus('正在检测人脸...', 'info');
+
+        // 等待视频准备就绪
+        video.addEventListener('loadeddata', () => {
+            startDetection();
+        }, { once: true });
+    });
+
+    // 取消按钮点击
+    cancelBtn.addEventListener('click', () => {
+        stopCamera();
+        statusIndicator.style.display = 'none';
+        qualityBars.style.display = 'none';
+        startBtn.disabled = false;
+        cancelBtn.disabled = true;
+        userIdInput.disabled = false;
+        isProcessing = false;
+        showResult('info', '已取消', '认证已取消');
+    });
+
+    // 页面加载时加载模型
+    window.addEventListener('load', () => {
+        loadModels();
+    });
+</script>
+</body>
+</html>
