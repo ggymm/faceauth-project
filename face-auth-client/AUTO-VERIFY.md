@@ -137,6 +137,34 @@ npm run start:auto
 
 ## 常见问题
 
+### Q: 报错"Failed to fetch"或找不到.bin文件？
+**A:** 这是模型文件格式问题，解决方法：
+
+1. **检查文件名**：确保文件是 `.bin` 格式，不是 `-shard1` 格式
+   ```bash
+   # 正确的文件名
+   tiny_face_detector_model.bin
+   face_landmark_68_tiny_model.bin
+
+   # 错误的文件名（旧版）
+   tiny_face_detector_model-shard1
+   face_landmark_68_tiny_model-shard1
+   ```
+
+2. **重新下载**：如果文件名不对，删除后重新下载
+   ```bash
+   cd models
+   rm -f *-shard1
+   curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model.bin
+   curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68_tiny_model.bin
+   ```
+
+3. **验证文件**：检查文件是否完整
+   ```bash
+   ls -lh models/
+   # 应该看到 4 个文件，两个.json和两个.bin
+   ```
+
 ### Q: 一直提示"未检测到人脸"？
 **A:** 检查以下项：
 - 摄像头是否正常工作
@@ -196,12 +224,14 @@ cd models
 
 # 下载 TinyFaceDetector 模型
 curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-weights_manifest.json
-curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-shard1
+curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model.bin
 
 # 下载 FaceLandmark68Tiny 模型
 curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68_tiny_model-weights_manifest.json
-curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68_tiny_model-shard1
+curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68_tiny_model.bin
 ```
+
+**注意**：文件名必须是 `.bin` 格式，不要下载 `-shard1` 格式的文件。
 
 ### 模型文件清单
 
@@ -210,9 +240,9 @@ curl -O https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/face_landmark_68
 ```
 models/
 ├── tiny_face_detector_model-weights_manifest.json    (3.1 KB)
-├── tiny_face_detector_model-shard1                   (189 KB)
+├── tiny_face_detector_model.bin                      (189 KB)
 ├── face_landmark_68_tiny_model-weights_manifest.json (4.7 KB)
-└── face_landmark_68_tiny_model-shard1                (75 KB)
+└── face_landmark_68_tiny_model.bin                   (75 KB)
 
 总大小: 约 270 KB
 ```
@@ -270,9 +300,9 @@ face-auth-client/
 ├── auto-verify.html     # 新增：自动认证页面 ⭐
 ├── models/              # face-api.js模型文件 ⭐
 │   ├── tiny_face_detector_model-weights_manifest.json
-│   ├── tiny_face_detector_model-shard1
+│   ├── tiny_face_detector_model.bin
 │   ├── face_landmark_68_tiny_model-weights_manifest.json
-│   └── face_landmark_68_tiny_model-shard1
+│   └── face_landmark_68_tiny_model.bin
 ├── package.json         # 新增start:auto脚本
 └── AUTO-VERIFY.md       # 本文档
 ```
