@@ -838,21 +838,40 @@
 
         updateStatus('正在拍摄...', 'info');
 
-        // 捕获图片
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
         try {
             const userId = userIdInput.value.trim();
+
+            // 捕获图片
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // 检查视频是否有内容
+            if (canvas.width === 0 || canvas.height === 0) {
+                throw new Error('视频尺寸无效，请重试');
+            }
+
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             updateStatus('正在上传并验证...', 'info');
 
             // 转换为Blob
-            const blob = await new Promise(resolve => {
-                canvas.toBlob(resolve, 'image/jpeg', 0.9);
+            const blob = await new Promise((resolve, reject) => {
+                canvas.toBlob(blob => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('图片转换失败'));
+                    }
+                }, 'image/jpeg', 0.9);
             });
+
+            console.log('Blob created:', blob.size, 'bytes');
+
+            // 检查Blob是否有效
+            if (!blob || blob.size === 0) {
+                throw new Error('图片数据为空，请重试');
+            }
 
             // 构建FormData
             const formData = new FormData();
