@@ -392,9 +392,10 @@
             <div class="tips-title">使用提示</div>
             <ul class="tips-list">
                 <li>确保光线充足，正对摄像头</li>
-                <li>将人脸置于椭圆引导框内</li>
-                <li>系统检测到活体后会自动完成认证</li>
-                <li>认证过程中请保持自然表情</li>
+                <li>将人脸置于圆形引导框内</li>
+                <li>系统检测到人脸后，请轻微摇头或张嘴</li>
+                <li>活体检测通过后会自动完成认证</li>
+                <li>如遇质量检测问题，可勾选"简化模式"</li>
             </ul>
         </div>
     </div>
@@ -424,8 +425,11 @@
     let detectionInterval = null;
     let isProcessing = false;
     let consecutiveGoodFrames = 0;
-    let blinkCount = 0;
-    let lastEyeState = null;
+    let livenessDetected = false;  // 改为通用的活体检测标志
+    let lastHeadPosition = null;   // 记录上次头部位置
+    let lastMouthState = null;     // 记录上次嘴巴状态
+    let headTurnCount = 0;         // 摇头次数
+    let mouthOpenCount = 0;        // 张嘴次数
     let modelsLoaded = false;
 
     // 配置参数
@@ -434,7 +438,9 @@
         MODEL_PATH: './models',  // 从本地加载模型
         QUALITY_THRESHOLD: 70,   // 降低到70分（原85分）
         CONSECUTIVE_FRAMES: 2,   // 降低到2帧（原3帧）
-        BLINK_REQUIRED: 1,
+        LIVENESS_REQUIRED: true, // 需要活体检测
+        HEAD_TURN_THRESHOLD: 0.15, // 摇头阈值（鼻子偏移比例）
+        MOUTH_OPEN_THRESHOLD: 0.5,  // 张嘴阈值（嘴巴高度/宽度比）
         FACE_SIZE_MIN: 0.12,     // 降低最小值（原0.25）
         FACE_SIZE_MAX: 0.65,     // 增加最大值
         ANGLE_LIMIT: 25,         // 放宽到25度（原20度）
@@ -498,8 +504,11 @@
     // 开始人脸检测
     async function startDetection() {
         consecutiveGoodFrames = 0;
-        blinkCount = 0;
-        lastEyeState = null;
+        livenessDetected = false;
+        lastHeadPosition = null;
+        lastMouthState = null;
+        headTurnCount = 0;
+        mouthOpenCount = 0;
 
         detectionInterval = setInterval(async () => {
             if (isProcessing) return;
@@ -531,12 +540,24 @@
         // 检查是否启用简化模式
         const isSimpleMode = simpleModeCheckbox.checked;
 
+        // 活体检测
+        if (!livenessDetected && CONFIG.LIVENESS_REQUIRED) {
+            const livenessResult = detectLiveness(detection.landmarks);
+            if (livenessResult.detected) {
+                livenessDetected = true;
+                console.log(`Liveness detected: ${livenessResult.type}`);
+            }
+        }
+
         // 输出调试信息到控制台
         console.log('Quality Score:', {
             overall: quality.overall,
             faceSize: quality.faceSize,
             angle: quality.angle,
             confidence: quality.confidence,
+            livenessDetected: livenessDetected,
+            headTurns: headTurnCount,
+            mouthOpens: mouthOpenCount,
             debug: quality.debug,
             simpleMode: isSimpleMode
         });
@@ -548,28 +569,23 @@
             consecutiveGoodFrames++;
             faceGuide.className = 'face-guide good';
 
-            // 检测眨眼
-            const currentEyeState = detectBlink(detection.landmarks);
-            if (lastEyeState === 'open' && currentEyeState === 'closed') {
-                blinkCount++;
-                console.log('Blink detected, count:', blinkCount);
-            }
-            lastEyeState = currentEyeState;
-
             // 判断是否可以自动拍摄
-            if (consecutiveGoodFrames >= CONFIG.CONSECUTIVE_FRAMES &&
-                blinkCount >= CONFIG.BLINK_REQUIRED) {
-                updateStatus(`质量优秀！准备认证... (已检测到${blinkCount}次眨眼)`, 'success');
+            const canCapture = consecutiveGoodFrames >= CONFIG.CONSECUTIVE_FRAMES &&
+                              (!CONFIG.LIVENESS_REQUIRED || livenessDetected);
+
+            if (canCapture) {
+                updateStatus(`质量优秀！准备认证... (活体检测: ${livenessDetected ? '通过' : '未启用'})`, 'success');
 
                 // 延迟拍摄以确保稳定
                 setTimeout(() => {
                     captureAndVerify();
                 }, 500);
             } else {
-                const blinkStatus = blinkCount >= CONFIG.BLINK_REQUIRED ? '✓' :
-                    `请眨眼 (${blinkCount}/${CONFIG.BLINK_REQUIRED})`;
+                const livenessHint = CONFIG.LIVENESS_REQUIRED ?
+                    (livenessDetected ? '✓ 活体检测通过' : '请轻微摇头或张嘴') : '活体检测未启用';
                 const modeHint = isSimpleMode ? '[简化模式]' : `(${quality.overall}分)`;
-                updateStatus(`检测到人脸 ${modeHint} | ${blinkStatus} | 稳定中... (${consecutiveGoodFrames}/${CONFIG.CONSECUTIVE_FRAMES})`, 'success');
+                updateStatus(`检测到人脸 ${modeHint} | ${livenessHint} | 稳定中... (${consecutiveGoodFrames}/${CONFIG.CONSECUTIVE_FRAMES})`,
+                    livenessDetected ? 'success' : 'info');
             }
         } else {
             consecutiveGoodFrames = 0;
@@ -693,7 +709,66 @@
         };
     }
 
-    // 检测眨眼
+    // 活体检测（摇头或张嘴）
+    function detectLiveness(landmarks) {
+        const nose = landmarks.getNose();
+        const mouth = landmarks.getMouth();
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+
+        // 计算眼睛中心作为参考点
+        const eyeCenterX = (
+            leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length +
+            rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length
+        ) / 2;
+
+        const eyeDistance = Math.sqrt(
+            Math.pow(rightEye[0].x - leftEye[0].x, 2) +
+            Math.pow(rightEye[0].y - leftEye[0].y, 2)
+        );
+
+        // 1. 检测摇头（鼻子相对于眼睛中心的水平偏移）
+        const noseTip = nose[3];
+        const noseOffset = (noseTip.x - eyeCenterX) / eyeDistance;
+
+        if (lastHeadPosition !== null) {
+            const headMovement = Math.abs(noseOffset - lastHeadPosition);
+            if (headMovement > CONFIG.HEAD_TURN_THRESHOLD) {
+                headTurnCount++;
+                console.log(`Head turn detected: ${headMovement.toFixed(3)}, count: ${headTurnCount}`);
+                lastHeadPosition = noseOffset;
+                return { detected: true, type: 'head_turn' };
+            }
+        }
+        lastHeadPosition = noseOffset;
+
+        // 2. 检测张嘴（嘴巴的高度/宽度比）
+        // mouth有20个点，上嘴唇中点是第14个，下嘴唇中点是第18个
+        const upperLip = mouth[14];
+        const lowerLip = mouth[18];
+        const leftCorner = mouth[0];
+        const rightCorner = mouth[6];
+
+        const mouthHeight = Math.abs(lowerLip.y - upperLip.y);
+        const mouthWidth = Math.abs(rightCorner.x - leftCorner.x);
+        const mouthRatio = mouthHeight / mouthWidth;
+
+        const isMouthOpen = mouthRatio > CONFIG.MOUTH_OPEN_THRESHOLD;
+
+        if (lastMouthState !== null) {
+            if (lastMouthState === false && isMouthOpen) {
+                mouthOpenCount++;
+                console.log(`Mouth open detected: ratio ${mouthRatio.toFixed(3)}, count: ${mouthOpenCount}`);
+                lastMouthState = isMouthOpen;
+                return { detected: true, type: 'mouth_open' };
+            }
+        }
+        lastMouthState = isMouthOpen;
+
+        return { detected: false, type: null };
+    }
+
+    // 检测眨眼（已废弃，保留作为备用）
     function detectBlink(landmarks) {
         const leftEye = landmarks.getLeftEye();
         const rightEye = landmarks.getRightEye();
@@ -799,13 +874,15 @@
             if (result.success) {
                 const data = result.data;
                 if (data.isMatch) {
+                    const livenessInfo = livenessDetected ?
+                        `<br>活体检测: 通过 (摇头${headTurnCount}次, 张嘴${mouthOpenCount}次)` :
+                        '';
                     showResult(
                         'success',
                         '认证成功！',
                         `用户 ${userId} 认证通过<br>` +
                         `相似度: ${(data.similarity * 100).toFixed(2)}%<br>` +
-                        `阈值: ${(data.threshold * 100).toFixed(2)}%<br>` +
-                        `活体检测: 通过 (检测到${blinkCount}次眨眼)`
+                        `阈值: ${(data.threshold * 100).toFixed(2)}%${livenessInfo}`
                     );
                 } else {
                     showResult(
