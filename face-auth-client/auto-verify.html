@@ -474,7 +474,6 @@
     const resultOverlay = document.getElementById('resultOverlay');
     const resultOverlayTitle = document.getElementById('resultOverlayTitle');
     const resultOverlayContent = document.getElementById('resultOverlayContent');
-    const tipsSection = document.querySelector('.tips');
 
     // 全局变量
     let stream = null;
@@ -942,7 +941,6 @@
             const result = await response.json();
 
             // 隐藏tips和质量指示器
-            tipsSection.classList.add('hidden');
             statusIndicator.style.display = 'none';
             qualityBars.style.display = 'none';
             faceGuide.style.display = 'none';
@@ -983,7 +981,6 @@
             stopCamera();
 
             // 隐藏UI元素
-            tipsSection.classList.add('hidden');
             statusIndicator.style.display = 'none';
             qualityBars.style.display = 'none';
             faceGuide.style.display = 'none';
@@ -1043,7 +1040,6 @@
         resultOverlay.className = 'result-overlay';
         resultSection.className = 'result-section';
         // 显示tips
-        tipsSection.classList.remove('hidden');
         faceGuide.style.display = 'block';
 
         // 重置canvas和video显示状态
@@ -1080,7 +1076,6 @@
         userIdInput.disabled = false;
         isProcessing = false;
         // 恢复tips显示
-        tipsSection.classList.remove('hidden');
         faceGuide.style.display = 'block';
         // 重置canvas和video显示状态
         canvas.classList.remove('show');
