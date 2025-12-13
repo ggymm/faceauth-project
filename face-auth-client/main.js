@@ -36,9 +36,9 @@ async function createWindow() {
   // mainWindow.maximize();
 
   // 打开开发者工具（可选）
-  mainWindow.webContents.openDevTools({
-    mode: "right"
-  });
+  // mainWindow.webContents.openDevTools({
+  //   mode: "bottom"
+  // });
 }
 
 app.whenReady().then(async () => {
