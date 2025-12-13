@@ -112,6 +112,73 @@
             border-radius: 10px;
             font-size: 14px;
             line-height: 1.5;
+            z-index: 10;
+        }
+
+        .result-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            text-align: center;
+            display: none;
+            z-index: 20;
+        }
+
+        .result-overlay.show {
+            display: block;
+        }
+
+        .result-overlay.success {
+            border: 3px solid #4ade80;
+        }
+
+        .result-overlay.error {
+            border: 3px solid #f87171;
+        }
+
+        .result-overlay-title {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .result-overlay.success .result-overlay-title {
+            color: #4ade80;
+        }
+
+        .result-overlay.error .result-overlay-title {
+            color: #f87171;
+        }
+
+        .result-overlay-content {
+            font-size: 16px;
+            line-height: 1.8;
+        }
+
+        .result-overlay-close {
+            margin-top: 30px;
+            padding: 12px 30px;
+            background: white;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .result-overlay-close:hover {
+            background: #f3f4f6;
+        }
+
+        .tips.hidden {
+            display: none;
         }
 
         .quality-bars {
@@ -361,6 +428,11 @@
                         </div>
                     </div>
                 </div>
+                <div id="resultOverlay" class="result-overlay">
+                    <div class="result-overlay-title" id="resultOverlayTitle"></div>
+                    <div class="result-overlay-content" id="resultOverlayContent"></div>
+                    <button class="result-overlay-close" id="resultOverlayClose">确定</button>
+                </div>
             </div>
         </div>
     </div>
@@ -419,6 +491,11 @@
     const resultSection = document.getElementById('resultSection');
     const resultTitle = document.getElementById('resultTitle');
     const resultContent = document.getElementById('resultContent');
+    const resultOverlay = document.getElementById('resultOverlay');
+    const resultOverlayTitle = document.getElementById('resultOverlayTitle');
+    const resultOverlayContent = document.getElementById('resultOverlayContent');
+    const resultOverlayClose = document.getElementById('resultOverlayClose');
+    const tipsSection = document.querySelector('.tips');
 
     // 全局变量
     let stream = null;
@@ -573,13 +650,10 @@
             const canCapture = consecutiveGoodFrames >= CONFIG.CONSECUTIVE_FRAMES &&
                               (!CONFIG.LIVENESS_REQUIRED || livenessDetected);
 
-            if (canCapture) {
-                updateStatus(`质量优秀！准备认证... (活体检测: ${livenessDetected ? '通过' : '未启用'})`, 'success');
-
-                // 延迟拍摄以确保稳定
-                setTimeout(() => {
-                    captureAndVerify();
-                }, 500);
+            if (canCapture && !isProcessing) {
+                updateStatus(`质量优秀！准备认证...`, 'success');
+                // 立即调用，不要延迟
+                captureAndVerify();
             } else {
                 const livenessHint = CONFIG.LIVENESS_REQUIRED ?
                     (livenessDetected ? '✓ 活体检测通过' : '请轻微摇头或张嘴') : '活体检测未启用';
@@ -830,20 +904,16 @@
         if (isProcessing) return;
         isProcessing = true;
 
-        // 停止检测
-        if (detectionInterval) {
-            clearInterval(detectionInterval);
-            detectionInterval = null;
-        }
-
         updateStatus('正在拍摄...', 'info');
 
         try {
             const userId = userIdInput.value.trim();
 
-            // 捕获图片
+            // 先拍照 - 确保视频流还在运行
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+
+            console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
 
             // 检查视频是否有内容
             if (canvas.width === 0 || canvas.height === 0) {
@@ -852,6 +922,12 @@
 
             const context = canvas.getContext('2d');
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 拍照后停止检测
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
 
             updateStatus('正在上传并验证...', 'info');
 
@@ -889,42 +965,59 @@
             // 停止摄像头
             stopCamera();
 
-            // 显示结果
+            // 隐藏tips和质量指示器
+            tipsSection.classList.add('hidden');
+            statusIndicator.style.display = 'none';
+            qualityBars.style.display = 'none';
+            faceGuide.style.display = 'none';
+
+            // 在overlay中显示结果
             if (result.success) {
                 const data = result.data;
                 if (data.isMatch) {
                     const livenessInfo = livenessDetected ?
-                        `<br>活体检测: 通过 (摇头${headTurnCount}次, 张嘴${mouthOpenCount}次)` :
+                        `<br><br>活体检测: 通过<br>(摇头${headTurnCount}次, 张嘴${mouthOpenCount}次)` :
                         '';
-                    showResult(
+                    showResultOverlay(
                         'success',
-                        '认证成功！',
+                        '认证成功 ✓',
                         `用户 ${userId} 认证通过<br>` +
                         `相似度: ${(data.similarity * 100).toFixed(2)}%<br>` +
                         `阈值: ${(data.threshold * 100).toFixed(2)}%${livenessInfo}`
                     );
                 } else {
-                    showResult(
+                    showResultOverlay(
                         'error',
-                        '认证失败',
+                        '认证失败 ✗',
                         `相似度 ${(data.similarity * 100).toFixed(2)}% 低于阈值 ${(data.threshold * 100).toFixed(2)}%<br>` +
                         `请确认用户ID是否正确`
                     );
                 }
             } else {
-                showResult('error', '认证失败', result.message);
+                showResultOverlay('error', '认证失败 ✗', result.message);
             }
 
         } catch (error) {
             console.error('Verification failed:', error);
+            // 停止摄像头
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
             stopCamera();
-            showResult('error', '认证失败', error.message);
-        } finally {
-            isProcessing = false;
+
+            // 隐藏UI元素
+            tipsSection.classList.add('hidden');
             statusIndicator.style.display = 'none';
             qualityBars.style.display = 'none';
+            faceGuide.style.display = 'none';
+
+            showResultOverlay('error', '认证失败 ✗', error.message);
+        } finally {
+            isProcessing = false;
             startBtn.disabled = false;
             cancelBtn.disabled = true;
+            userIdInput.disabled = false;
         }
     }
 
@@ -942,12 +1035,32 @@
         }
     }
 
-    // 显示结果
+    // 显示结果overlay
+    function showResultOverlay(type, title, content) {
+        resultOverlay.className = `result-overlay show ${type}`;
+        resultOverlayTitle.textContent = title;
+        resultOverlayContent.innerHTML = content;
+    }
+
+    // 显示结果（底部，已废弃）
     function showResult(type, title, content) {
         resultSection.className = `result-section ${type}`;
         resultTitle.textContent = title;
         resultContent.innerHTML = content;
     }
+
+    // 关闭结果overlay
+    resultOverlayClose.addEventListener('click', () => {
+        resultOverlay.className = 'result-overlay';
+        // 恢复UI元素
+        tipsSection.classList.remove('hidden');
+        faceGuide.style.display = 'block';
+        // 重置状态
+        livenessDetected = false;
+        headTurnCount = 0;
+        mouthOpenCount = 0;
+        consecutiveGoodFrames = 0;
+    });
 
     // 开始按钮点击
     startBtn.addEventListener('click', async () => {
@@ -963,8 +1076,12 @@
             return;
         }
 
-        // 隐藏结果
+        // 隐藏结果overlay和底部结果
+        resultOverlay.className = 'result-overlay';
         resultSection.className = 'result-section';
+        // 显示tips
+        tipsSection.classList.remove('hidden');
+        faceGuide.style.display = 'block';
 
         // 启动摄像头
         const cameraStarted = await startCamera();
@@ -981,6 +1098,7 @@
 
         // 等待视频准备就绪
         video.addEventListener('loadeddata', () => {
+            console.log('Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
             startDetection();
         }, { once: true });
     });
@@ -994,6 +1112,9 @@
         cancelBtn.disabled = true;
         userIdInput.disabled = false;
         isProcessing = false;
+        // 恢复tips显示
+        tipsSection.classList.remove('hidden');
+        faceGuide.style.display = 'block';
         showResult('info', '已取消', '认证已取消');
     });
 
