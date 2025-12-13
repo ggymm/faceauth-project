@@ -85,9 +85,9 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 280px;
-            height: 350px;
-            border: 3px solid rgba(255, 255, 255, 0.5);
+            width: 380px;
+            height: 420px;
+            border: 4px solid rgba(255, 255, 255, 0.6);
             border-radius: 50%;
             transition: border-color 0.3s;
         }
@@ -371,6 +371,13 @@
             <input type="text" id="userId" placeholder="请输入要认证的用户ID">
         </div>
 
+        <div class="input-group">
+            <label>
+                <input type="checkbox" id="simpleMode" style="width: auto; margin-right: 8px;">
+                简化模式（跳过质量检测，只需眨眼即可）
+            </label>
+        </div>
+
         <div class="button-group">
             <button id="startBtn" class="btn-primary">开始自动认证</button>
             <button id="cancelBtn" class="btn-secondary" disabled>取消</button>
@@ -403,6 +410,7 @@
     const startBtn = document.getElementById('startBtn');
     const cancelBtn = document.getElementById('cancelBtn');
     const userIdInput = document.getElementById('userId');
+    const simpleModeCheckbox = document.getElementById('simpleMode');
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
     const qualityBars = document.getElementById('qualityBars');
@@ -424,13 +432,13 @@
     const CONFIG = {
         BACKEND_URL: 'http://192.168.1.43:20000',
         MODEL_PATH: './models',  // 从本地加载模型
-        QUALITY_THRESHOLD: 85,
-        CONSECUTIVE_FRAMES: 3,
+        QUALITY_THRESHOLD: 70,   // 降低到70分（原85分）
+        CONSECUTIVE_FRAMES: 2,   // 降低到2帧（原3帧）
         BLINK_REQUIRED: 1,
-        FACE_SIZE_MIN: 0.25,
-        FACE_SIZE_IDEAL: 0.35,
-        ANGLE_LIMIT: 20,
-        CONFIDENCE_MIN: 0.7,
+        FACE_SIZE_MIN: 0.12,     // 降低最小值（原0.25）
+        FACE_SIZE_MAX: 0.65,     // 增加最大值
+        ANGLE_LIMIT: 25,         // 放宽到25度（原20度）
+        CONFIDENCE_MIN: 0.6,     // 降低到0.6（原0.7）
         DETECTION_INTERVAL: 100
     };
 
@@ -520,7 +528,23 @@
         const quality = calculateQuality(detection);
         updateQualityUI(quality);
 
-        if (quality.overall >= CONFIG.QUALITY_THRESHOLD) {
+        // 检查是否启用简化模式
+        const isSimpleMode = simpleModeCheckbox.checked;
+
+        // 输出调试信息到控制台
+        console.log('Quality Score:', {
+            overall: quality.overall,
+            faceSize: quality.faceSize,
+            angle: quality.angle,
+            confidence: quality.confidence,
+            debug: quality.debug,
+            simpleMode: isSimpleMode
+        });
+
+        // 简化模式：只要检测到人脸就认为质量合格
+        const qualityPassed = isSimpleMode ? (quality.confidence >= 50) : (quality.overall >= CONFIG.QUALITY_THRESHOLD);
+
+        if (qualityPassed) {
             consecutiveGoodFrames++;
             faceGuide.className = 'face-guide good';
 
@@ -544,12 +568,13 @@
             } else {
                 const blinkStatus = blinkCount >= CONFIG.BLINK_REQUIRED ? '✓' :
                     `请眨眼 (${blinkCount}/${CONFIG.BLINK_REQUIRED})`;
-                updateStatus(`质量良好 | ${blinkStatus} | 稳定中... (${consecutiveGoodFrames}/${CONFIG.CONSECUTIVE_FRAMES})`, 'success');
+                const modeHint = isSimpleMode ? '[简化模式]' : `(${quality.overall}分)`;
+                updateStatus(`检测到人脸 ${modeHint} | ${blinkStatus} | 稳定中... (${consecutiveGoodFrames}/${CONFIG.CONSECUTIVE_FRAMES})`, 'success');
             }
         } else {
             consecutiveGoodFrames = 0;
             faceGuide.className = 'face-guide bad';
-            updateStatus(quality.feedback, 'warning');
+            updateStatus(`${quality.feedback} (综合${quality.overall}分: 大小${quality.faceSize}% 角度${quality.angle}% 置信${quality.confidence}%)`, 'warning');
         }
     }
 
@@ -560,63 +585,111 @@
         const videoHeight = video.videoHeight;
 
         // 1. 人脸大小评分 (0-100)
-        const faceArea = box.width * box.height;
+        const faceWidth = box.width;
+        const faceHeight = box.height;
+        const faceArea = faceWidth * faceHeight;
         const videoArea = videoWidth * videoHeight;
         const faceSizeRatio = faceArea / videoArea;
-        const faceSizeScore = Math.min((faceSizeRatio / CONFIG.FACE_SIZE_IDEAL) * 100, 100);
 
-        // 2. 正脸角度评分 (0-100) - 基于关键点估算
+        // 更宽松的评分：15%-60%都给高分
+        let faceSizeScore = 0;
+        if (faceSizeRatio >= 0.15 && faceSizeRatio <= 0.60) {
+            faceSizeScore = 100;
+        } else if (faceSizeRatio < 0.15) {
+            // 小于15%，线性递减
+            faceSizeScore = (faceSizeRatio / 0.15) * 100;
+        } else {
+            // 大于60%，线性递减
+            faceSizeScore = Math.max(0, 100 - ((faceSizeRatio - 0.60) * 200));
+        }
+
+        // 2. 正脸角度评分 (0-100) - 简化算法
         const landmarks = detection.landmarks;
-        const nose = landmarks.getNose();
         const leftEye = landmarks.getLeftEye();
         const rightEye = landmarks.getRightEye();
+        const nose = landmarks.getNose();
+        const mouth = landmarks.getMouth();
 
-        const eyeCenter = {
-            x: (leftEye[0].x + rightEye[0].x) / 2,
-            y: (leftEye[0].y + rightEye[0].y) / 2
+        // 计算眼睛中点
+        const leftEyeCenter = {
+            x: leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length,
+            y: leftEye.reduce((sum, p) => sum + p.y, 0) / leftEye.length
+        };
+        const rightEyeCenter = {
+            x: rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length,
+            y: rightEye.reduce((sum, p) => sum + p.y, 0) / rightEye.length
         };
 
-        const noseCenter = {
-            x: nose[3].x,
-            y: nose[3].y
+        // 计算鼻子底部位置
+        const noseTip = nose[3];
+
+        // 计算嘴巴中点
+        const mouthCenter = {
+            x: mouth.reduce((sum, p) => sum + p.x, 0) / mouth.length,
+            y: mouth.reduce((sum, p) => sum + p.y, 0) / mouth.length
         };
 
-        const horizontalOffset = Math.abs(noseCenter.x - eyeCenter.x);
+        // 眼睛水平度检查（左右眼高度差）
+        const eyeHeightDiff = Math.abs(leftEyeCenter.y - rightEyeCenter.y);
         const eyeDistance = Math.sqrt(
-            Math.pow(rightEye[0].x - leftEye[0].x, 2) +
-            Math.pow(rightEye[0].y - leftEye[0].y, 2)
+            Math.pow(rightEyeCenter.x - leftEyeCenter.x, 2) +
+            Math.pow(rightEyeCenter.y - leftEyeCenter.y, 2)
         );
+        const eyeAngleRatio = eyeHeightDiff / eyeDistance;
 
-        const angleRatio = horizontalOffset / eyeDistance;
-        const angleScore = Math.max(0, 100 - (angleRatio * 500));
+        // 鼻子居中度检查
+        const faceCenterX = (leftEyeCenter.x + rightEyeCenter.x) / 2;
+        const noseOffset = Math.abs(noseTip.x - faceCenterX);
+        const noseOffsetRatio = noseOffset / eyeDistance;
+
+        // 综合角度评分（更宽松）
+        let angleScore = 100;
+        if (eyeAngleRatio > 0.15) {
+            // 头部倾斜超过15%
+            angleScore -= (eyeAngleRatio - 0.15) * 200;
+        }
+        if (noseOffsetRatio > 0.25) {
+            // 鼻子偏移超过25%
+            angleScore -= (noseOffsetRatio - 0.25) * 150;
+        }
+        angleScore = Math.max(0, Math.min(100, angleScore));
 
         // 3. 检测置信度评分 (0-100)
         const confidence = detection.detection.score;
         const confidenceScore = confidence * 100;
 
-        // 综合评分
-        const overallScore = (faceSizeScore * 0.4 + angleScore * 0.3 + confidenceScore * 0.3);
+        // 综合评分（调整权重，更重视置信度）
+        const overallScore = (faceSizeScore * 0.3 + angleScore * 0.2 + confidenceScore * 0.5);
 
         // 生成反馈
         let feedback = '';
-        if (faceSizeRatio < CONFIG.FACE_SIZE_MIN) {
+        if (faceSizeRatio < 0.12) {
             feedback = '请靠近摄像头';
-        } else if (faceSizeRatio > CONFIG.FACE_SIZE_IDEAL * 1.5) {
+        } else if (faceSizeRatio > 0.65) {
             feedback = '请稍微远离摄像头';
-        } else if (angleScore < 70) {
-            feedback = '请正对摄像头';
-        } else if (confidenceScore < 70) {
+        } else if (angleScore < 60) {
+            if (eyeAngleRatio > 0.15) {
+                feedback = '请保持头部水平';
+            } else {
+                feedback = '请正对摄像头';
+            }
+        } else if (confidenceScore < 60) {
             feedback = '光线不足或画面模糊';
         } else {
             feedback = '姿势良好，保持稳定';
         }
 
         return {
-            faceSize: faceSizeScore,
-            angle: angleScore,
-            confidence: confidenceScore,
-            overall: overallScore,
-            feedback: feedback
+            faceSize: Math.round(faceSizeScore),
+            angle: Math.round(angleScore),
+            confidence: Math.round(confidenceScore),
+            overall: Math.round(overallScore),
+            feedback: feedback,
+            debug: {
+                faceSizeRatio: faceSizeRatio.toFixed(3),
+                eyeAngleRatio: eyeAngleRatio.toFixed(3),
+                noseOffsetRatio: noseOffsetRatio.toFixed(3)
+            }
         };
     }
 
